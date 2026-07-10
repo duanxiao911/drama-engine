@@ -1,0 +1,39 @@
+# 配置示例 - 请复制为 config.yaml 并填入你的 API Key
+app_name: "Drama Engine"
+version: "1.0.0"
+
+llm:
+  provider: "openai"
+  # 方式1：直接填写你的 API Key
+  # api_key: "sk-your-key-here"
+  # 方式2：通过环境变量 DRAMA_LLM_API_KEY 设置（推荐）
+  api_key: ""
+  model: "deepseek-chat"
+  base_url: "https://api.deepseek.com"
+  temperature: 0.7
+  max_tokens: 4000
+
+paths:
+  root: "./workspace"
+  knowledge_base: "./knowledge"
+  experts_prompts: "./knowledge/experts"
+  checkpoints: "./workspace/checkpoints"
+  outputs: "./workspace/outputs"
+
+workflow:
+  expert_sequence:
+    - "§0"
+    - "§2"
+    - "§8"
+    - "§1"
+    - "§4"
+    - "§3"
+    - "§5"
+    - "§13"
+  enable_checkpoint: false
+  checkpoint_interval: 1
+  stop_on_validation_error: false
+  max_retries: 3
+
+default_drama_type: "现实主义"
+default_total_episodes: 30

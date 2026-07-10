@@ -1,0 +1,8 @@
+openai>=1.30.0
+fastapi>=0.111.0
+uvicorn>=0.30.0
+pyyaml>=6.0
+rich>=13.7.0
+click>=8.1.0
+python-dotenv>=1.0.0
+python-docx>=1.1.0

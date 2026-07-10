@@ -1,0 +1,35 @@
+[project]
+name = "drama-engine"
+version = "0.1.0"
+description = "AI精品短剧创作引擎 - 1人+15个AI专家=完整制作团队"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "xiaoduan"}]
+
+dependencies = [
+    "openai>=1.30.0",
+    "fastapi>=0.111.0",
+    "uvicorn>=0.30.0",
+    "pyyaml>=6.0",
+    "rich>=13.7.0",
+    "click>=8.1.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+
+[project.scripts]
+drama-engine = "src.api.cli:main"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
