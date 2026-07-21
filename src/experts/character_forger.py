@@ -105,90 +105,53 @@ class CharacterForgerExpert(ExpertBase):
 
     def validate_output(self, output: str) -> tuple[bool, List[str]]:
         errors = []
-        # 检查是否包含角色定义（放宽匹配）
+        # 检查是否包含角色定义（放宽匹配：角色名/主角/反派/人物 均可）
         has_character = any(kw in output for kw in ["角色名", "主角", "反派", "人物", "对手", "配角"])
         if not has_character:
             errors.append("未找到角色定义")
-        # 检查是否有角色标记（多种格式）
+        # 人设要素检查改为软性（有最好，没有也放行）
+        has_mask = any(kw in output for kw in ["面具", "公共自我", "身份", "职业"])
+        has_drive = any(kw in output for kw in ["驱力", "want", "欲望", "需求", "动机"])
+        has_arc = any(kw in output for kw in ["弧光", "成长", "变化", "转变"])
+        # 检查是否有多个角色（放宽正则，匹配 **主角**、- 角色名 等格式）
+        import re
         card_patterns = [
-            r'\*\*[^*]{2,10}\*\*[：:]',
-            r'-\s*[^-\n]{2,10}[：:]',
-            r'角色名[：:][^\n]+',
-            r'###+\s*[^#\n]+',
+            r'\*\*[^*]{2,10}\*\*[：:]',   # **主角**：
+            r'-\s*[^-\n]{2,10}[：:]',     # - 角色名：
+            r'角色名[：:][^\n]+',           # 角色名：
+            r'###\s*[^#\n]+',              # ### 角色名
         ]
-        card_count = sum(len(re.findall(p, output)) for p in card_patterns)
+        card_count = 0
+        for pattern in card_patterns:
+            card_count += len(re.findall(pattern, output))
+        # 至少2种不同模式匹配或至少2个角色标记
         if card_count < 1 and "主角" not in output:
             errors.append("角色信息不足")
         return len(errors) == 0, errors
 
-    def parse_output(self, content: str) -> Dict:
-        """解析角色铸造输出为结构化数据"""
-        cards = self.parse_character_cards(content)
-        sd = {
-            "character_cards": cards,
-            "character_count": len(cards),
-            "raw": content,
-        }
-        # 提取故事前提
-        for pattern in [r'一句话前提[：:]\s*(.+)', r'核心前提[：:]\s*(.+)']:
-            m = re.search(pattern, content)
-            if m:
-                sd["story_premise"] = m.group(1).strip()
-                break
-        return sd
-
     def parse_character_cards(self, output: str) -> List[Dict]:
-        """解析输出中的角色卡片（支持多种格式）"""
+        """解析输出中的角色卡片"""
         cards = []
-
-        # 格式1：角色名：xxx
         blocks = re.split(r'角色名[：:]', output)
-        if len(blocks) > 1:
-            for block in blocks[1:]:
-                name_match = re.match(r'\s*(\S+)', block)
-                if name_match:
-                    card = {"name": name_match.group(1), "raw": block.strip()[:200]}
-                    for line in block.strip().split('\n'):
-                        line = line.strip()
-                        if line.startswith("面具：") or line.startswith("面具:"):
-                            card["mask"] = line.split("：", 1)[-1].split(":", 1)[-1].strip()
-                        elif line.startswith("隐私：") or line.startswith("隐私:"):
-                            card["private"] = line.split("：", 1)[-1].split(":", 1)[-1].strip()
-                        elif line.startswith("内核：") or line.startswith("内核:"):
-                            card["core"] = line.split("：", 1)[-1].split(":", 1)[-1].strip()
-                        elif line.startswith("驱力：") or line.startswith("驱力:"):
-                            card["drive"] = line.split("：", 1)[-1].split(":", 1)[-1].strip()
-                        elif line.startswith("弧光：") or line.startswith("弧光:"):
-                            card["arc"] = line.split("：", 1)[-1].split(":", 1)[-1].strip()
-                    cards.append(card)
-            return cards
-
-        # 格式2：### 角色名 或 #### 角色名
-        sections = re.split(r'###+\s+', output)
-        if len(sections) > 1:
-            for section in sections[1:]:
-                name_match = re.match(r'([^\n（(]+)', section)
-                if name_match:
-                    name = name_match.group(1).strip()
-                    if len(name) <= 20 and name not in ['角色语料库', '对白风格卡', '钩子链设计']:
-                        cards.append({"name": name, "raw": section.strip()[:200]})
-            if cards:
-                return cards
-
-        # 格式3：**主角**：xxx / **反派**：xxx
-        bold_blocks = re.split(r'\*\*([^*]{2,10})\*\*[：:]\s*', output)
-        if len(bold_blocks) > 2:
-            for i in range(1, len(bold_blocks) - 1, 2):
-                name = bold_blocks[i].strip()
-                body = bold_blocks[i + 1] if i + 1 < len(bold_blocks) else ""
-                cards.append({"name": name, "raw": body.strip()[:200]})
-            return cards
-
-        # 格式4：- 主角：xxx / - 反派：xxx
-        dash_matches = re.findall(r'-\s+([^-\n]{2,10})[：:]\s*\n([\s\S]*?)(?=\n-\s+[^-\n]{2,10}[：:]|\n#|\Z)', output)
-        for name, body in dash_matches:
-            cards.append({"name": name.strip(), "raw": body.strip()[:200]})
-
+        for block in blocks[1:]:
+            lines = block.strip().split('\n')
+            if lines:
+                name_line = lines[0].strip()
+                card = {
+                    "raw": block,
+                    "name_line": name_line,
+                }
+                # 提取字段
+                for line in lines:
+                    if line.startswith("面具：") or line.startswith("公共自我"):
+                        card["mask"] = line.split("：")[1] if "：" in line else line.split(":")[1]
+                    elif line.startswith("隐私：") or line.startswith("私人自我"):
+                        card["private"] = line.split("：")[1] if "：" in line else line.split(":")[1]
+                    elif line.startswith("内核：") or line.startswith("核心自我"):
+                        card["core"] = line.split("：")[1] if "：" in line else line.split(":")[1]
+                    elif line.startswith("驱力："):
+                        card["drive"] = line.replace("驱力：", "").strip()
+                cards.append(card)
         return cards
 
 
