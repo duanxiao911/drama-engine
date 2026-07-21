@@ -8,7 +8,6 @@
 """
 
 from typing import List, Dict, Optional
-import re
 from .base import ExpertBase, ExpertContext, ExpertOutput
 
 
@@ -111,17 +110,8 @@ class DialogueMasterExpert(ExpertBase):
 """
 
     def get_user_prompt(self, context: ExpertContext, **kwargs) -> str:
-        # 兜底：story_premise 优先，没有则用 story_direction
-        story_premise = context.story_premise or context.story_direction or kwargs.get("story_premise", "")
-
+        story_premise = context.story_premise or kwargs.get("story_premise", "")
         character_cards = context.character_cards or kwargs.get("character_cards", [])
-
-        # 兜底：从 metadata 拿 §1 原始内容
-        if not character_cards:
-            step1 = context.metadata.get("step_outputs", {}).get("§1", {})
-            if step1 and step1.get("content"):
-                character_cards = [{"name": "角色（从§1推断）", "raw": step1["content"]}]
-
         episode_outlines = context.episode_outlines or kwargs.get("episode_outlines", [])
 
         chars_text = ""
@@ -154,43 +144,36 @@ class DialogueMasterExpert(ExpertBase):
 
     def validate_output(self, output: str) -> tuple[bool, List[str]]:
         errors = []
-        # 核心检查：必须有语料库/词汇相关内容
+        # 核心检查：必须有语料库/词汇相关内容（这是§4的核心产出）
         if "语料库" not in output and "词汇" not in output and "语气" not in output:
             errors.append("缺少语料库相关输出")
-        # 对白相关内容检查
+        # 对白相关内容检查（放宽：对白/台词/示例/口语 任一出现即可）
         has_dialogue = any(kw in output for kw in ["对白", "台词", "示例", "口语", "说话"])
         if not has_dialogue:
             errors.append("缺少对白相关内容")
-        # 对白示例检查（多种格式匹配）
+        # 对白示例检查（放宽：多种格式匹配）
+        import re
+        # 匹配多种对白格式：台词：xxx、"xxx"、——xxx、角色名：xxx
         dialogue_patterns = [
-            r'["\u201c].{3,}?["\u201d]',  # 引号包裹的对白
-            r'[:：]\s*\*{0,2}[^*\n]{3,}',  # 冒号后的内容
+            r'["\u201c].{3,}?["\u201d]',  # 引号包裹的对白（中英文引号，最小3字）
+            r'[:：]\s*\*{0,2}[^*\n]{3,}',  # 冒号后的内容（最小3字）
             r'——\s*.+',  # 破折号引导的对白
             r'[（(][^）)]{3,}[）)]',  # 括号内的动作描写
         ]
-        dialogue_count = sum(len(re.findall(p, output)) for p in dialogue_patterns)
+        dialogue_count = 0
+        for pattern in dialogue_patterns:
+            dialogue_count += len(re.findall(pattern, output))
+        # 阈值从3降到2，宽松一些
         if dialogue_count < 2:
             errors.append(f"对白示例不足，仅{dialogue_count}处")
-        # 钩子链检查改为软性（不导致验证失败）
+        # 钩子链检查改为软性检查（不导致验证失败）
         return len(errors) == 0, errors
-
-    def parse_output(self, content: str) -> Dict:
-        """解析对白大师输出为结构化数据"""
-        # 提取对白示例数量
-        dialogue_examples = len(re.findall(r'["\u201c].{3,}?["\u201d]', content))
-        # 提取词汇/语气信息
-        corpus = self.parse_dialogue_corpus(content)
-
-        return {
-            "dialogue_corpus": corpus,
-            "dialogue_examples_count": dialogue_examples,
-            "raw": content,
-        }
 
     def parse_dialogue_corpus(self, output: str) -> Dict[str, Dict]:
         """解析对白语料库"""
         corpus = {}
-        # 按角色分段提取
+        import re
+        # 简单按角色名分段提取
         sections = re.split(r'(?=###\s*\S)', output)
         for section in sections:
             if section.strip():
