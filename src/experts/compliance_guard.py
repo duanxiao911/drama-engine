@@ -8,7 +8,6 @@
 """
 
 from typing import List, Dict
-import re
 from .base import ExpertBase, ExpertContext, ExpertOutput
 
 
@@ -113,56 +112,26 @@ class ComplianceGuardExpert(ExpertBase):
             errors.append("缺少风险评级符号🟢🟡🔴")
         return len(errors) == 0, errors
 
-    def parse_output(self, content: str) -> Dict:
-        """解析合规扫描输出为结构化数据"""
-        risk_level = self.parse_risk_level(content)
-        warnings = self.parse_warnings(content)
-        return {
-            "risk_level": risk_level,
-            "risk_warnings": warnings,
-            "warning_count": len(warnings),
-            "raw": content,
-        }
-
     def parse_risk_level(self, output: str) -> str:
-        """从输出中解析风险等级（优先看'风险评级：'行，兜底全文扫描）"""
-        # 优先：只看"风险评级："所在行
-        for line in output.split('\n'):
-            if '风险评级' in line:
-                if '🔴' in line or '红色' in line:
-                    return "red"
-                elif '🟡' in line or '黄色' in line:
-                    return "yellow"
-                elif '🟢' in line or '绿色' in line:
-                    return "green"
-        # 兜底：全文扫描（红色 > 黄色 > 绿色）
-        if '🔴' in output or '红色' in output:
+        """从输出中解析风险等级"""
+        if "🟢绿色" in output and "🟡" not in output and "🔴" not in output:
+            return "green"
+        elif "🔴" in output:
             return "red"
-        elif '🟡' in output or '黄色' in output:
+        elif "🟡" in output:
             return "yellow"
         return "green"
 
     def parse_warnings(self, output: str) -> List[Dict]:
-        """解析风险警告列表（支持多种格式）"""
+        """解析风险警告列表"""
         warnings = []
-        for line in output.split('\n'):
-            line = line.strip()
-            if not line:
-                continue
-            # 格式1：带→分隔的结构化风险行
-            if '→' in line and any(risk in line for risk in ['红线', '风险', '禁区', '禁止']):
-                parts = [p.strip() for p in line.split('→')]
+        lines = output.split('\n')
+        for line in lines:
+            if '→' in line and any(risk in line for risk in ['红线', '风险', '禁区']):
+                parts = line.split('→')
                 warnings.append({
-                    "description": parts[0] if parts else line,
-                    "severity": "high" if '🔴' in line else "medium" if '🟡' in line else "low",
-                    "raw": line,
-                })
-            # 格式2：以 - 开头的风险描述行（包含风险相关关键词）
-            elif line.startswith('-') and any(risk in line for risk in ['风险', '红线', '禁止', '禁区']):
-                warnings.append({
-                    "description": line.lstrip('- ').strip(),
-                    "severity": "high" if '🔴' in line else "medium" if '🟡' in line else "low",
-                    "raw": line,
+                    "description": line.strip(),
+                    "severity": "high" if '🔴' in line else "medium" if '🟡' in line else "low"
                 })
         return warnings
 
