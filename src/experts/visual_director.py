@@ -8,7 +8,6 @@
 """
 
 from typing import List, Dict, Optional
-import re
 from .base import ExpertBase, ExpertContext, ExpertOutput
 
 
@@ -177,18 +176,15 @@ class VisualDirectorExpert(ExpertBase):
         if "视觉基调" not in output:
             errors.append("缺少全剧视觉基调定义")
         # 检查是否有具体的视觉描述
+        import re
         scene_designs = len(re.findall(r'场景|景别|光|镜头', output))
         if scene_designs < 10:
             errors.append("视觉描述不足，可能缺少具体场景设计")
         return len(errors) == 0, errors
 
-    def parse_output(self, content: str) -> Dict:
-        """解析视觉方案输出为结构化数据"""
-        scheme = self.parse_visual_scheme(content)
-        return scheme
-
     def parse_visual_scheme(self, output: str) -> Dict:
-        """解析视觉方案（用正则按边界截断，避免关键词重复导致截错）"""
+        """解析视觉方案"""
+        import re
         scheme = {"raw": output}
 
         # 提取基调
@@ -196,15 +192,11 @@ class VisualDirectorExpert(ExpertBase):
         if tone_match:
             scheme["visual_tone"] = tone_match.group(1).strip()
 
-        # 提取关键章节（用正则按下一个标题截断，避免split误伤）
-        for section in ["光影系统", "镜头系统", "声音系统", "关键场景视觉方案", "视觉符号系统"]:
-            match = re.search(rf'【{section}】\s*\n([\s\S]*?)(?=\n【[^】]+】|\Z)', output)
-            if match:
-                scheme[section] = match.group(1).strip()
-
-        # 统计场景设计数量
-        scene_count = len(re.findall(r'场景|景别|光|镜头|声音|色调', output))
-        scheme["scene_design_count"] = scene_count
+        # 提取关键章节
+        sections = ["光影系统", "镜头系统", "声音系统"]
+        for section in sections:
+            if section in output:
+                scheme[section] = output.split(section)[1].split("##")[0].strip()
 
         return scheme
 
