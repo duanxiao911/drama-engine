@@ -1,6 +1,6 @@
 """
 云匠引擎 Pipeline Orchestrator
-15专家调度脚本 - 处理依赖关系、并行执行、数据流转
+17专家调度脚本 - 处理依赖关系、并行执行、数据流转
 
 执行模式：
 - full: 完整链路（题材→创意→分集→剧本→精修→发行）
@@ -16,8 +16,8 @@ Layer 3: ③结构建筑（依赖②）
 Layer 4: ④对白大师（依赖①③）、⑪场景工匠（依赖④）
 Layer 5: ⑤分集编剧（依赖①②③④）
 Layer 6: ⑥格式工匠（依赖⑤）、⑬金句萃取（依赖④）
-Layer 7: ⑦质量审计（依赖所有创作专家）
-Layer 8: ⑨改稿编辑（依赖⑦）、⑭商业操盘（依赖⑧）
+Layer 7: ⑦质量审计（依赖所有创作专家）、⑯集纲审核（依赖分集）
+Layer 8: ⑨改稿编辑（依赖⑦）、⑭商业操盘（依赖⑧）、⑰剧本审核（依赖⑦）
 Layer 9: ⑮品控总监（依赖⑦⑭）
 """
 
@@ -114,14 +114,17 @@ class LLMAPIAdapter:
                 base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
             )
             
+            # 使用配置的模型名，默认为deepseek-chat
+            model = self.config.get("model", "deepseek-chat")
+            
             response = client.chat.completions.create(
-                model=kwargs.get("model", "gpt-4"),
+                model=model,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
                 temperature=kwargs.get("temperature", 0.7),
-                max_tokens=kwargs.get("max_tokens", 4096)
+                max_tokens=kwargs.get("max_tokens", 16384)
             )
             
             return response.choices[0].message.content
@@ -155,7 +158,7 @@ class PipelineOrchestrator:
         self._register_experts()
     
     def _register_experts(self):
-        """注册所有15个专家"""
+        """注册所有17个专家 - 匹配实际文件"""
         
         # Layer 0: 总调度
         self._register(ExpertConfig(
@@ -163,7 +166,7 @@ class PipelineOrchestrator:
             name="⑩实战指挥",
             layer=0,
             dependencies=[],
-            system_prompt_file="commander.md",
+            system_prompt_file="battle_commander.md",
             input_schema={"project": "str", "goal": "str"},
             output_schema={"strategy": "dict", "priorities": "list"}
         ))
@@ -180,35 +183,25 @@ class PipelineOrchestrator:
         ))
         
         self._register(ExpertConfig(
-            expert_id="world_forger",
-            name="⑫世界观锻造",
+            expert_id="project_configurator",
+            name="⑧项目配置师",
             layer=1,
             dependencies=[],
-            system_prompt_file="world_forger.md",
-            input_schema={"genre": "str", "setting": "str"},
-            output_schema={"world_setting": "dict"}
-        ))
-        
-        self._register(ExpertConfig(
-            expert_id="commercial_packager",
-            name="⑧商业包装",
-            layer=1,
-            dependencies=[],
-            system_prompt_file="commercial_packager.md",
+            system_prompt_file="project_configurator.md",
             input_schema={"synopsis": "str", "genre": "str"},
-            output_schema={"title": "str", "logline": "str", "tags": "list"},
+            output_schema={"project_setup": "dict"},
             optional=True
         ))
         
         # Layer 2: 依赖角色
         self._register(ExpertConfig(
-            expert_id="emotion_weaver",
-            name="§2情感编织师",
+            expert_id="soul_catcher",
+            name="§0灵魂捕手",
             layer=2,
             dependencies=["character_forger"],
-            system_prompt_file="emotion_weaver.md",
+            system_prompt_file="soul_catcher.md",
             input_schema={"characters": "list", "synopsis": "str"},
-            output_schema={"emotion_arc": "dict", "tear_points": "list"}
+            output_schema={"soul_arc": "dict", "core_conflict": "str"}
         ))
         
         # Layer 3: 依赖情感
@@ -216,9 +209,9 @@ class PipelineOrchestrator:
             expert_id="structure_architect",
             name="§3结构建筑师",
             layer=3,
-            dependencies=["emotion_weaver"],
+            dependencies=["soul_catcher"],
             system_prompt_file="structure_architect.md",
-            input_schema={"emotion_arc": "dict", "synopsis": "str"},
+            input_schema={"soul_arc": "dict", "synopsis": "str"},
             output_schema={"structure": "dict", "turning_points": "list"}
         ))
         
@@ -243,37 +236,27 @@ class PipelineOrchestrator:
             output_schema={"scene_designs": "list"}
         ))
         
-        # Layer 5: 分集编剧
+        # Layer 5: 分集编剧（使用compliance_guard作为替代）
         self._register(ExpertConfig(
-            expert_id="episode_writer",
-            name="§5分集编剧",
+            expert_id="compliance_guard",
+            name="§2合规守门员",
             layer=5,
-            dependencies=["character_forger", "emotion_weaver", "structure_architect", "dialogue_master"],
-            system_prompt_file="episode_writer.py",
+            dependencies=["character_forger", "soul_catcher", "structure_architect", "dialogue_master"],
+            system_prompt_file="compliance_guard.md",
             input_schema={"all_above": "dict", "episode_count": "int"},
-            output_schema={"episodes": "list", "episode_scripts": "list"}
+            output_schema={"compliance_report": "dict", "episodes": "list"},
+            optional=True
         ))
         
-        # Layer 6: 格式和金句
+        # Layer 6: 格式
         self._register(ExpertConfig(
             expert_id="format_craftsman",
             name="§6格式工匠",
             layer=6,
-            dependencies=["episode_writer"],
-            system_prompt_file="format_craftsman.py",
+            dependencies=["compliance_guard"],
+            system_prompt_file="format_craftsman.md",
             input_schema={"episodes": "list"},
             output_schema={"formatted_script": "str"}
-        ))
-        
-        self._register(ExpertConfig(
-            expert_id="quote_extractor",
-            name="⑬金句萃取",
-            layer=6,
-            dependencies=["dialogue_master", "episode_writer"],
-            system_prompt_file="quote_extractor.md",
-            input_schema={"episodes": "list", "dialogue_style": "dict"},
-            output_schema={"golden_quotes": "list"},
-            optional=True
         ))
         
         # Layer 7: 质量审计
@@ -281,10 +264,22 @@ class PipelineOrchestrator:
             expert_id="quality_auditor",
             name="§7质量审计",
             layer=7,
-            dependencies=["episode_writer", "format_craftsman"],
-            system_prompt_file="quality_auditor.py",
+            dependencies=["format_craftsman"],
+            system_prompt_file="quality_auditor.md",
             input_schema={"script": "str", "all_results": "dict"},
             output_schema={"audit_report": "dict", "score": "float"}
+        ))
+        
+        # Layer 7.5: 集纲审核（在分集完成后审核）
+        self._register(ExpertConfig(
+            expert_id="episode_outline_reviewer",
+            name="⑯集纲审核",
+            layer=7,
+            dependencies=["compliance_guard"],
+            system_prompt_file="episode_outline_reviewer.md",
+            input_schema={"episode_outlines": "list", "project": "dict"},
+            output_schema={"review_report": "dict", "score": "float"},
+            optional=True
         ))
         
         # Layer 8: 改稿和商业操盘
@@ -293,19 +288,31 @@ class PipelineOrchestrator:
             name="§9改稿编辑",
             layer=8,
             dependencies=["quality_auditor"],
-            system_prompt_file="revision_editor.py",
+            system_prompt_file="revision_editor.md",
             input_schema={"script": "str", "audit_report": "dict"},
             output_schema={"revised_script": "str"}
         ))
         
         self._register(ExpertConfig(
-            expert_id="commercial_operator",
+            expert_id="business_operator",
             name="⑭商业操盘",
             layer=8,
-            dependencies=["commercial_packager"],
-            system_prompt_file="commercial_operator.md",
-            input_schema={"packaging": "dict", "script": "str"},
+            dependencies=["project_configurator"],
+            system_prompt_file="business_operator.md",
+            input_schema={"project_setup": "dict", "script": "str"},
             output_schema={"distribution_plan": "dict"},
+            optional=True
+        ))
+        
+        # Layer 8.5: 剧本审核（在剧本完成后审核）
+        self._register(ExpertConfig(
+            expert_id="script_reviewer",
+            name="⑰剧本审核",
+            layer=8,
+            dependencies=["format_craftsman", "quality_auditor"],
+            system_prompt_file="script_reviewer.md",
+            input_schema={"script_content": "str", "project": "dict"},
+            output_schema={"review_report": "dict", "score": "float"},
             optional=True
         ))
         
@@ -314,10 +321,22 @@ class PipelineOrchestrator:
             expert_id="quality_director",
             name="⑮品控总监",
             layer=9,
-            dependencies=["quality_auditor", "commercial_operator"],
+            dependencies=["quality_auditor", "business_operator"],
             system_prompt_file="quality_director.md",
             input_schema={"audit_report": "dict", "distribution_plan": "dict"},
             output_schema={"final_approval": "bool", "release_notes": "str"}
+        ))
+        
+        # 额外专家：视觉导演
+        self._register(ExpertConfig(
+            expert_id="visual_director",
+            name="⑬视觉导演",
+            layer=7,
+            dependencies=["format_craftsman"],
+            system_prompt_file="visual_director.md",
+            input_schema={"formatted_script": "str"},
+            output_schema={"visual_design": "dict"},
+            optional=True
         ))
     
     def _register(self, config: ExpertConfig):
@@ -419,15 +438,28 @@ class PipelineOrchestrator:
         # 查找JSON代码块
         json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', response)
         if json_match:
-            json_str = json_match.group(1)
+            json_str = json_match.group(1).strip()
         else:
             # 尝试直接解析
-            json_str = response
+            json_str = response.strip()
         
         try:
             return json.loads(json_str)
         except json.JSONDecodeError as e:
-            raise ValueError(f"Failed to parse JSON from {expert_id}: {e}\nResponse: {response[:500]}")
+            # JSON解析失败，尝试修复常见的JSON问题
+            # 1. 移除可能的markdown代码块标记
+            json_str = re.sub(r'^```json\s*', '', json_str)
+            json_str = re.sub(r'\s*```$', '', json_str)
+            
+            try:
+                return json.loads(json_str)
+            except:
+                # 仍然失败，返回原始响应作为文本输出
+                return {
+                    "raw_output": response,
+                    "parse_error": str(e),
+                    "expert_id": expert_id
+                }
     
     def execute(self, project: Dict, mode: ExecutionMode = ExecutionMode.FULL, 
                 parallel: bool = True) -> Dict[str, ExpertResult]:
@@ -488,12 +520,12 @@ class PipelineOrchestrator:
         if mode == ExecutionMode.FULL:
             return list(self.experts.keys())
         elif mode == ExecutionMode.EPISODE_ONLY:
-            # 只跑到分集编剧
-            return ["commander", "character_forger", "world_forger", "emotion_weaver",
-                    "structure_architect", "dialogue_master", "episode_writer"]
+            # 只跑到分集阶段
+            return ["commander", "character_forger", "project_configurator", "soul_catcher",
+                    "structure_architect", "dialogue_master", "compliance_guard"]
         elif mode == ExecutionMode.SCRIPT_ONLY:
             # 只跑分集到剧本
-            return ["episode_writer", "format_craftsman", "quality_auditor"]
+            return ["compliance_guard", "format_craftsman", "quality_auditor"]
         elif mode == ExecutionMode.POLISH_ONLY:
             # 只跑精修
             return ["revision_editor", "quality_auditor"]
